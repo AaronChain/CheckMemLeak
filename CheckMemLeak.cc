@@ -24,7 +24,8 @@ X Add ability to keep * infront of the variable when it is not being initialized
 X not tested Add ability for the code to take destructor and member variables into account (if the deletion of a memeber variable takes place in the destructor then no out of scope warning should be given
 X Add ability for the code to recognise variables that are assigned dynamic memory through constructors and push_back operations (do thius by converting brackets around new statements into an equal sign
     and the push_back keyword into a [])
-Next two aren't really necessary
+X Add ability for code to take in directories, go through the list of files, match the source files to their header files, and check them
+Add ability for code to take inheritence into account by following the chain of mother objects to see if missing delete or new operations are inherited
 Add ability for code to take return statements into a count, all new variables at this point should be deleted
 add ability for code to count new/delete statements stored in an array (created in a for loop or line by line)
     and ensure that they are all deleted by comparing the for conditions staments and/or the number of statements.
@@ -32,9 +33,7 @@ can't have any space, between an array of dynamic pointers and the [] brackets, 
 */
 
 enum  OutFilter {characters=1, numbers, NA, symbols};
-
 void GetDataStream( string, std::stringstream&);
-
 void CheckData(std::stringstream& stream, std::stringstream& output);
 bool MovePastWord(std::stringstream& stream, string word);
 string ExtractString(std::stringstream &stream, char delim, int outType=7);
@@ -47,37 +46,122 @@ void SetDataStream( string, std::stringstream&);
 int main(int argc, char **argv)
 {
     string sourceName, headerName, outDirName;
-
+    vector<string> sourceNames, headerNames;
     std::stringstream streamS, streamH, stream, output;
     string logFileName;
 
-    if(argc==3)
+    if(argc<2)
     {
-            sourceName = argv[1];
-            headerName = argv[2];
-            outDirName = sourceName.substr(0, sourceName.find_last_of('/')+1);
-            GetDataStream(sourceName, streamS);
-            GetDataStream(headerName, streamH);
-            stream.str(streamS.str()+'\n'+streamH.str());
-            streamS.str("");
-            streamH.str("");
-            CheckData(stream, output);
-            logFileName = CreateMacroName(sourceName, outDirName);
-            SetDataStream(logFileName, output);
+        cout << "No inputs given, please provide source file name and optionally the related header file that you want to check\n"
+            << "or provide the source directory and optionally the header directory containing the files you want to check" << endl;
+        return 1;
     }
-    else if(argc==2)
+
+    sourceName=argv[1];
+    outDirName = sourceName.substr(0, sourceName.find_last_of('/')+1);
+    if(sourceName.back()=='/')
     {
-        sourceName = argv[1];
-        outDirName = sourceName.substr(0, sourceName.find_last_of('/')+1);
-        GetDataStream(sourceName, streamS);
-        CheckData(streamS, output);
-        logFileName = CreateMacroName(sourceName, outDirName);
-        SetDataStream(logFileName, output);
+        DIR *dirS;
+        struct dirent *entS;
+
+        //goes through the given source directory, opening the source files and their equivalent header files
+        if ((dirS = opendir (sourceName.c_str())) != NULL)
+        {
+            while ((entS = readdir (dirS)) != NULL)
+            {
+                if((string(entS->d_name)!="..")&&(string(entS->d_name)!="."))
+                {
+                    sourceNames.push_back(entS->d_name);
+                }
+            }
+            closedir(dirS);
+        }
     }
     else
     {
-        cout << "\nGive the source and/or the header file that you want to check\n" <<  endl;
+        sourceNames.push_back(sourceName.substr(sourceName.find_last_of('/')+1));
+        sourceName=sourceName.substr(0, sourceName.find_last_of('/')+1);
     }
+
+    if(argc==3)
+    {
+        headerName=argv[2];
+        if(headerName.back()=='/')
+        {
+            DIR *dirH;
+            struct dirent *entH;
+
+            //goes through the given source directory, opening the source files and their equivalent header files
+            if ((dirH = opendir (headerName.c_str())) != NULL)
+            {
+                while ((entH = readdir (dirH)) != NULL)
+                {
+                    if((string(entH->d_name)!="..")&&(string(entH->d_name)!="."))
+                    {
+                        headerNames.push_back(entH->d_name);
+                    }
+                }
+                closedir(dirH);
+            }
+            int numLoops=sourceNames.size();
+            for(int i=0; i<numLoops; i++)
+            {
+                for(int j=0; j<int(headerNames.size()); j++)
+                {
+                    if(sourceNames[i].substr(0, sourceNames[i].find_last_of('.'))==headerNames[j].substr(0, headerNames[j].find_last_of('.')))
+                    {
+                        headerNames.insert(headerNames.begin()+i, headerNames[j]);
+                        headerNames.erase(headerNames.begin()+j+1);
+                        break;
+                    }
+                    else if(j==int(headerNames.size()-1))
+                    {
+                        sourceNames.push_back(sourceNames[i]);
+                        sourceNames.erase(sourceNames.begin()+i);
+                        numLoops--;
+                        i--;
+                    }
+                }
+            }
+        }
+        else
+        {
+            headerNames.push_back(headerName.substr(headerName.find_last_of('/')+1));
+            headerName=headerName.substr(0, headerName.find_last_of('/')+1);
+        }
+    }
+
+    output.fill('-');
+    for(int i=0; i<int(max(headerNames.size(),sourceNames.size())); i++)
+    {
+        output << std::setw(84) << std::right << "-" << endl;
+        if(i<int(sourceNames.size()))
+        {
+            GetDataStream(sourceName+sourceNames[i], streamS);
+            stream << streamS.str() << '\n';
+            output << "### " << sourceName+sourceNames[i] << " ###" << '\n';
+        }
+        if(i<int(headerNames.size()))
+        {
+            GetDataStream(headerName+headerNames[i], streamH);
+            stream << streamH.str() << '\n';
+            output << "### " << headerName+headerNames[i] << " ###" << '\n';
+        }
+        output << std::setw(84) << std::right << "-" << endl;
+
+        CheckData(stream, output);
+
+        stream.str("");
+        streamS.str("");
+        streamH.str("");
+        stream.clear();
+        streamS.clear();
+        streamH.clear();
+    }
+    logFileName = CreateMacroName(sourceName, outDirName);
+    SetDataStream(logFileName, output);
+
+    return 0;
 }
 
 void GetDataStream( string geoFileName, std::stringstream& ss)
@@ -330,8 +414,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                             if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                             {
                                 depthNum--;
-                                prevIfStatHist.pop_back();
-                                prevIfStat=prevIfStatHist.back();
+                                if(prevIfStatHist.size()>1)
+                                {
+                                    prevIfStatHist.pop_back();
+                                    prevIfStat=prevIfStatHist.back();
+                                }
+                                else
+                                    prevIfStat="";
                             }
                             depthArrayFlag.pop_back();
                         }
@@ -351,8 +440,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         {
                             newDepthNumList.push_back(depthNum+1);
                             newPrevIfStatList.push_back(prevIfStat);
-                            prevIfStatHist.pop_back();
-                            prevIfStat=prevIfStatHist.back();
+                            if(prevIfStatHist.size()>1)
+                            {
+                                prevIfStatHist.pop_back();
+                                prevIfStat=prevIfStatHist.back();
+                            }
+                            else
+                                prevIfStat="";
                         }
                         else
                         {
@@ -406,8 +500,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                     {
                         depthNum--;
-                        prevIfStatHist.pop_back();
-                        prevIfStat=prevIfStatHist.back();
+                        if(prevIfStatHist.size()>1)
+                        {
+                            prevIfStatHist.pop_back();
+                            prevIfStat=prevIfStatHist.back();
+                        }
+                        else
+                            prevIfStat="";
                     }
                     depthArrayFlag.pop_back();
                 }
@@ -418,8 +517,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 else if(nextLine&&firstPass)
                 {
                     //need to change this so that it only does it if there are no { and no new variables
-                    prevIfStatHist.pop_back();
-                    prevIfStat=prevIfStatHist.back();
+                    if(prevIfStatHist.size()>1)
+                    {
+                        prevIfStatHist.pop_back();
+                        prevIfStat=prevIfStatHist.back();
+                    }
+                    else
+                        prevIfStat="";
                     firstPass=false;
                 }
                 if(nextLine||(j>lastControlPos))
@@ -549,8 +653,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                             depthNum--;
                             lBracHis.pop_back();
                             lpos=lBracHis.back();
-                            prevIfStatHist.pop_back();
-                            prevIfStat=prevIfStatHist.back();
+                            if(prevIfStatHist.size()>1)
+                            {
+                                prevIfStatHist.pop_back();
+                                prevIfStat=prevIfStatHist.back();
+                            }
+                            else
+                                prevIfStat="";
                         }
                         depthArrayFlag.pop_back();
                     }
@@ -575,8 +684,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         rBracPos.push_back(count);
                         delPrevIfStatList.push_back(prevIfStat);
                         condCheck=prevIfStat;
-                        prevIfStatHist.pop_back();
-                        prevIfStat=prevIfStatHist.back();
+                        if(prevIfStatHist.size()>1)
+                        {
+                            prevIfStatHist.pop_back();
+                            prevIfStat=prevIfStatHist.back();
+                        }
+                        else
+                            prevIfStat="";
                     }
                     else
                     {
@@ -660,8 +774,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         depthNum--;
                         lBracHis.pop_back();
                         lpos=lBracHis.back();
-                        prevIfStatHist.pop_back();
-                        prevIfStat=prevIfStatHist.back();
+                        if(prevIfStatHist.size()>1)
+                        {
+                            prevIfStatHist.pop_back();
+                            prevIfStat=prevIfStatHist.back();
+                        }
+                        else
+                            prevIfStat="";
                         if(destructor&&destStart&&(depthNum==destDepth))
                         {
                             depthNum++;
@@ -677,8 +796,13 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 else if(nextLine&&firstPass)
                 {
                     //need to change this so that it only does it if there are no { and no new variables
-                    prevIfStatHist.pop_back();
-                    prevIfStat=prevIfStatHist.back();
+                    if(prevIfStatHist.size()>1)
+                    {
+                        prevIfStatHist.pop_back();
+                        prevIfStat=prevIfStatHist.back();
+                    }
+                    else
+                        prevIfStat="";
                     firstPass=false;
                 }
                 if(nextLine||(j>lastControlPos))
@@ -754,6 +878,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
     double perc, max1=0., max2=0.;
     bool delMatched, newMatched;
     int closest1=0, closest2=0;
+    int startLen = string(output.str()).size();
     for(int k=0; k<int(delNameList.size()); k++)
     {
         delMatched=false;
@@ -945,10 +1070,12 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
         output << "\nVariable " << newNameList[j] << " created on line " << newLineNumList[j] << ", is possibly not deleted" << endl;
     }
 
-    if(output.str()=="")
+    if(int(string(output.str()).size())==startLen)
     {
         output << "\nNo memory leaks detected :) !!!" << endl;
     }
+
+    output << endl;
 
 }
 
@@ -1292,7 +1419,10 @@ string ExtractString(std::stringstream &stream, char delim, int outType)
 
 string CreateMacroName(string geoFileName, string outDirName)
 {
-    geoFileName=geoFileName.substr(geoFileName.find_last_of('/')+1,geoFileName.find_last_of('.')-geoFileName.find_last_of('/')-1);
+    if(geoFileName.back()!='/')
+        geoFileName=geoFileName.substr(geoFileName.find_last_of('/')+1,geoFileName.find_last_of('.')-geoFileName.find_last_of('/')-1);
+    else
+        geoFileName="";
 
     return (outDirName+"DynMemCheck"+geoFileName+".txt");
 }
