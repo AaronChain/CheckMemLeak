@@ -1,0 +1,7 @@
+CheckMemLeak.cbp
+CheckMemLeak.depend
+CheckMemLeak.layout
+bin/
+gitignore.txt
+obj/
+*.?[!c]*
