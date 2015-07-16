@@ -13,8 +13,7 @@ using namespace std;
 This program searches through an inputed source and header file and looks for potential errors in the deletion
 of dynamically allocated memory, such as: the missing deletion, deletion of a non existant variable (misspelled or already deleted),
  deletion operation occuring at wrong scope (does not always happen), and wrong deletion operator and outputs the warnings to a logfile.
- This program does not account commenting out of multiple lines using the / * operator since it looks at each line individually; new or delete
-  statements between multi line comments will not be ignored by the interpreter
+  can't have any space, between an array of dynamic pointers and the [] brackets, or inside the [] brackets
 
 X Add ability for the code to suppress the warning of deletion of a nonexistant variable when the statement is guarded by an if statement
 X Add ability for the code to suppress the warning of deletion at wrong scope if deletion occurs at the right scope later on with a guard if statement
@@ -29,7 +28,8 @@ Add ability for code to take inheritence into account by following the chain of 
 Add ability for code to take return statements into a count, all new variables at this point should be deleted
 add ability for code to count new/delete statements stored in an array (created in a for loop or line by line)
     and ensure that they are all deleted by comparing the for conditions staments and/or the number of statements.
-can't have any space, between an array of dynamic pointers and the [] brackets, or inside the [] brackets
+Add ability for code to keep track of all the pointers that point to the new adress so that as long as one of them is deleted it is okay, look at doppler broadening macro creator
+Add ability for code to account commenting out of multiple lines using the / * operator
 */
 
 enum  OutFilter {characters=1, numbers, NA, symbols};
