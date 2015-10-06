@@ -151,12 +151,14 @@ int main(int argc, char **argv)
             GetDataStream(sourceName+sourceNames[i], streamS);
             stream << streamS.str() << '\n';
             output << "### " << sourceName+sourceNames[i] << " ###" << '\n';
+            cout << "\n### " << sourceName+sourceNames[i] << " ###" << '\n';
         }
         if(i<int(headerNames.size()))
         {
             GetDataStream(headerName+headerNames[i], streamH);
             stream << streamH.str() << '\n';
             output << "### " << headerName+headerNames[i] << " ###" << '\n';
+            cout << "\n### " << headerName+headerNames[i] << " ###" << '\n';
         }
         output << std::setw(84) << std::right << "-" << endl;
 
@@ -221,7 +223,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
     char line[256];
     string var;
     int count=0, charNum, depthNum=0, lastControlPos=256, lpos=0, rpos=0, lComOut, rComOut; //0,1,2,3 = none, if, for and while, we ignore for loops for now
-    bool arrayDel, unUsedDel, nextLine, firstPass, test, initVar=false, commentOut=false;
+    bool arrayDel, unUsedDel, nextLine, firstPass, test, initVar=false, commentOut=false, statHasLBrac=true;
     size_t intTemp1, intTemp2;
     stringstream temp;
     string linestr;
@@ -251,10 +253,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
     prevIfStatHist.push_back("");
 
     //gathers information about new operations
+    stream.getline(line,256); count++;
     while(stream.good())
     {
-        stream.getline(line,256); count++;
-
         charNum=-1;
         firstPass=true;
         nextLine=false;
@@ -465,7 +466,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         lastControlPos=linestr.size()-1;
                     prevIfStat=GetCondStatement(temp);
                     prevIfStatHist.push_back(prevIfStat);
+                    cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                     forLoopHist.push_back(false);
+                    statHasLBrac=false;
                 }
                 else if(MovePastWord(temp,"while")||MovePastWord(temp,"else"))
                 {
@@ -474,7 +477,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         lastControlPos=linestr.size()-1;
                     prevIfStat="";
                     prevIfStatHist.push_back(prevIfStat);
+                    cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                     forLoopHist.push_back(false);
+                    statHasLBrac=false;
                 }
                 else if(MovePastWord(temp,"for"))
                 {
@@ -483,8 +488,14 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         lastControlPos=linestr.size()-1;
                     prevForStat=GetCondStatement(temp);
                     prevForStatHist.push_back(prevForStat);
+                    cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(true)" << endl;
                     forLoopHist.push_back(true);
                     forLoopPosHist.push_back(stream.tellg());
+                    statHasLBrac=false;
+                }
+                if(linestr=="")
+                {
+                    linestr=" ";
                 }
                 for(int j=0; j<int(linestr.size()); j++)
                 {
@@ -496,6 +507,43 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         }
                         else if(linestr[j]=='}')
                         {
+                            if((!statHasLBrac)&&(depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
+                            {
+                                if(nextLine||(j>lastControlPos))
+                                {
+                                    nextLine=false;
+                                    lastControlPos=256;
+            //                        if(forLoopHist.size()==0)
+            //                        {
+            //                            cout << "break here";
+            //                        }
+                                    if(forLoopHist.back())
+                                    {
+                                        prevForStatHist.pop_back();
+                                        forLoopPosHist.pop_back();
+                                    }
+                                    else
+                                    {
+                                        depthNum--;
+                                        if(prevIfStatHist.size()>1)
+                                        {
+                                            prevIfStatHist.pop_back();
+                                            prevIfStat=prevIfStatHist.back();
+                                        }
+                                        else
+                                            prevIfStat="";
+                                    }
+                                    cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
+                                    forLoopHist.pop_back();
+                                    statHasLBrac=true;
+                                }
+                                else
+                                {
+                                    forLoopHist.push_back(forLoopHist[forLoopHist.size()-2]);
+                                    forLoopHist.erase(forLoopHist.end()-3);
+                                }
+
+                            }
                             if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                             {
                                 if(forLoopHist.back())
@@ -515,6 +563,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                                         prevIfStat="";
 
                                 }
+                                cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                                 forLoopHist.pop_back();
                             }
                             depthArrayFlag.pop_back();
@@ -523,10 +572,12 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         {
                             if(linestr[j]=='{')
                             {
+                                statHasLBrac=true;
                                 depthArrayFlag.back()=true;
                                 if(!forLoopHist.back())
                                     depthNum++;
-                                nextLine=false;
+                                nextLine=true;
+                                lastControlPos=256;
                             }
                         }
                     }
@@ -556,7 +607,11 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                                 else
                                     prevIfStat="";
                             }
+                            cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                             forLoopHist.pop_back();
+                            nextLine=false;
+                            lastControlPos=256;
+                            statHasLBrac=true;
                         }
                         else
                         {
@@ -592,7 +647,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 lastControlPos = temp.tellg();
                 if(lastControlPos==-1)
                     lastControlPos=linestr.size()-1;
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"while")||MovePastWord(temp,"else"))
             {
@@ -601,7 +658,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 lastControlPos = temp.tellg();
                 if(lastControlPos==-1)
                     lastControlPos=linestr.size()-1;
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"for"))
             {
@@ -610,8 +669,14 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     lastControlPos=linestr.size()-1;
                 prevForStat=GetCondStatement(temp);
                 prevForStatHist.push_back(prevForStat);
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(true)" << endl;
                 forLoopHist.push_back(true);
                 forLoopPosHist.push_back(stream.tellg());
+                statHasLBrac=false;
+            }
+            if(linestr=="")
+            {
+                linestr=" ";
             }
             for(int j=0; j<int(linestr.size()); j++)
             {
@@ -621,8 +686,49 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 }
                 else if(linestr[j]=='}')
                 {
+                    if((!statHasLBrac)&&(depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
+                    {
+                        if(nextLine||(j>lastControlPos))
+                        {
+                            nextLine=false;
+                            lastControlPos=256;
+    //                        if(forLoopHist.size()==0)
+    //                        {
+    //                            cout << "break here";
+    //                        }
+                            if(forLoopHist.back())
+                            {
+                                prevForStatHist.pop_back();
+                                forLoopPosHist.pop_back();
+                            }
+                            else
+                            {
+                                depthNum--;
+                                if(prevIfStatHist.size()>1)
+                                {
+                                    prevIfStatHist.pop_back();
+                                    prevIfStat=prevIfStatHist.back();
+                                }
+                                else
+                                    prevIfStat="";
+                            }
+                            cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
+                            forLoopHist.pop_back();
+                            statHasLBrac=true;
+                        }
+                        else
+                        {
+                            forLoopHist.push_back(forLoopHist[forLoopHist.size()-2]);
+                            forLoopHist.erase(forLoopHist.end()-3);
+                        }
+
+                    }
                     if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                     {
+//                        if(forLoopHist.size()==0)
+//                        {
+//                            cout << "break here";
+//                        }
                         if(forLoopHist.back())
                         {
                             prevForStatHist.pop_back();
@@ -639,11 +745,12 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                             else
                                 prevIfStat="";
                         }
+                        cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                         forLoopHist.pop_back();
                     }
                     depthArrayFlag.pop_back();
                 }
-                else if(linestr[j]==' ')
+                else if((j!=int(linestr.size()-1))&&((linestr[j]==' ')||(linestr[j]=='\t')||(linestr[j]=='\v')||(linestr[j]=='\f')||(linestr[j]=='\r')))
                 {
 
                 }
@@ -665,22 +772,26 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         else
                             prevIfStat="";
                     }
+                    cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                     forLoopHist.pop_back();
                     firstPass=false;
+                    statHasLBrac=true;
                 }
                 if(nextLine||(j>lastControlPos))
                 {
                     if(linestr[j]=='{')
                     {
+                        statHasLBrac=true;
                         depthArrayFlag.back()=true;
                         if(!forLoopHist.back())
                             depthNum++;
                         nextLine=false;
+                        lastControlPos=256;
                     }
                 }
             }
         }
-
+        stream.getline(line,256); count++;
     }
 
     //resets variables
@@ -700,12 +811,12 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
     lpos=0;
     rpos=0;
     string condCheck;
+    statHasLBrac=true;
 
     //gathers information about deletetion operations
+    stream.getline(line,256); count++;
     while(stream.good())
     {
-        stream.getline(line,256); count++;
-
         nextLine=false;
         firstPass=true;
 
@@ -739,7 +850,11 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
             }
 
         }
-
+        //cout << count << " " << linestr << '\n';
+        if("                AddDelayed(particle[0]);"==linestr)
+        {
+            //cout << "break here" << endl;
+        }
         while(MovePastWord(temp,"/*",true))
         {
             lComOut=int(temp.tellg())-2;
@@ -812,7 +927,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     lastControlPos=linestr.size()-1;
                 prevIfStat=GetCondStatement(temp);
                 prevIfStatHist.push_back(prevIfStat);
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"while")||MovePastWord(temp,"else"))
             {
@@ -821,7 +938,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     lastControlPos=linestr.size()-1;
                 prevIfStat="";
                 prevIfStatHist.push_back(prevIfStat);
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"for"))
             {
@@ -830,8 +949,14 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     lastControlPos=linestr.size()-1;
                 prevForStat=GetCondStatement(temp);
                 prevForStatHist.push_back(prevForStat);
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(true)" << endl;
                 forLoopHist.push_back(true);
                 forLoopPosHist.push_back(stream.tellg());
+                statHasLBrac=false;
+            }
+            if(linestr=="")
+            {
+                linestr=" ";
             }
             for(int j=0; j<int(linestr.size()); j++)
             {
@@ -843,6 +968,43 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     }
                     if(linestr[j]=='}')
                     {
+                        if((!statHasLBrac)&&(depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
+                        {
+                            if(nextLine||(j>lastControlPos))
+                            {
+                                nextLine=false;
+                                lastControlPos=256;
+        //                        if(forLoopHist.size()==0)
+        //                        {
+        //                            cout << "break here";
+        //                        }
+                                if(forLoopHist.back())
+                                {
+                                    prevForStatHist.pop_back();
+                                    forLoopPosHist.pop_back();
+                                }
+                                else
+                                {
+                                    depthNum--;
+                                    if(prevIfStatHist.size()>1)
+                                    {
+                                        prevIfStatHist.pop_back();
+                                        prevIfStat=prevIfStatHist.back();
+                                    }
+                                    else
+                                        prevIfStat="";
+                                }
+                                cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
+                                forLoopHist.pop_back();
+                                statHasLBrac=true;
+                            }
+                            else
+                            {
+                                forLoopHist.push_back(forLoopHist[forLoopHist.size()-2]);
+                                forLoopHist.erase(forLoopHist.end()-3);
+                            }
+
+                        }
                         if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                         {
                             if(forLoopHist.back())
@@ -859,6 +1021,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                                         rBracPos[k]=rpos;
                                 }
                                 depthNum--;
+                                cout << count << "  " << lBracHis.size() << " -1" << endl;
                                 lBracHis.pop_back();
                                 lpos=lBracHis.back();
                                 if(prevIfStatHist.size()>1)
@@ -869,6 +1032,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                                 else
                                     prevIfStat="";
                             }
+                            cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                             forLoopHist.pop_back();
                         }
                         depthArrayFlag.pop_back();
@@ -877,14 +1041,17 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     {
                         if(linestr[j]=='{')
                         {
+                            statHasLBrac=true;
                             depthArrayFlag.back()=true;
                             if(!forLoopHist.back())
                             {
                                 depthNum++;
                                 lpos=count;
+                                cout << count << "  " << lBracHis.size() << " +1" << endl;
                                 lBracHis.push_back(lpos);
                             }
-                            nextLine=false;
+                            nextLine=true;
+                            lastControlPos=256;
                         }
                     }
                 }
@@ -923,7 +1090,11 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                             else
                                 prevIfStat="";
                         }
+                        cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                         forLoopHist.pop_back();
+                        nextLine=false;
+                        lastControlPos=256;
+                        statHasLBrac=true;
                     }
                     else
                     {
@@ -999,7 +1170,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 lastControlPos = temp.tellg();
                 if(lastControlPos==-1)
                     lastControlPos=linestr.size()-1;
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"while")||MovePastWord(temp,"else"))
             {
@@ -1008,7 +1181,9 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 lastControlPos = temp.tellg();
                 if(lastControlPos==-1)
                     lastControlPos=linestr.size()-1;
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(false)" << endl;
                 forLoopHist.push_back(false);
+                statHasLBrac=false;
             }
             else if(MovePastWord(temp,"for"))
             {
@@ -1017,8 +1192,14 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     lastControlPos=linestr.size()-1;
                 prevForStat=GetCondStatement(temp);
                 prevForStatHist.push_back(prevForStat);
+                cout << count << "  " << forLoopHist.size() << " +1 forLoopHist.push_back(true)" << endl;
                 forLoopHist.push_back(true);
                 forLoopPosHist.push_back(stream.tellg());
+                statHasLBrac=false;
+            }
+            if(linestr=="")
+            {
+                linestr=" ";
             }
             for(int j=0; j<int(linestr.size()); j++)
             {
@@ -1028,6 +1209,43 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 }
                 else if(linestr[j]=='}')
                 {
+                    if((!statHasLBrac)&&(depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
+                    {
+                        if(nextLine||(j>lastControlPos))
+                        {
+                            nextLine=false;
+                            lastControlPos=256;
+    //                        if(forLoopHist.size()==0)
+    //                        {
+    //                            cout << "break here";
+    //                        }
+                            if(forLoopHist.back())
+                            {
+                                prevForStatHist.pop_back();
+                                forLoopPosHist.pop_back();
+                            }
+                            else
+                            {
+                                depthNum--;
+                                if(prevIfStatHist.size()>1)
+                                {
+                                    prevIfStatHist.pop_back();
+                                    prevIfStat=prevIfStatHist.back();
+                                }
+                                else
+                                    prevIfStat="";
+                            }
+                            cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
+                            forLoopHist.pop_back();
+                            statHasLBrac=true;
+                        }
+                        else
+                        {
+                            forLoopHist.push_back(forLoopHist[forLoopHist.size()-2]);
+                            forLoopHist.erase(forLoopHist.end()-3);
+                        }
+
+                    }
                     if((depthArrayFlag.size()>0)&&(depthArrayFlag.back()))
                     {
                         if(forLoopHist.back())
@@ -1044,6 +1262,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                                     rBracPos[k]=rpos;
                             }
                             depthNum--;
+                            cout << count << "  " << lBracHis.size() << " -1" << endl;
                             lBracHis.pop_back();
                             lpos=lBracHis.back();
                             if(prevIfStatHist.size()>1)
@@ -1054,6 +1273,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                             else
                                 prevIfStat="";
                         }
+                        cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                         forLoopHist.pop_back();
                         if(destructor&&destStart&&(depthNum==destDepth))
                         {
@@ -1063,7 +1283,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                     }
                     depthArrayFlag.pop_back();
                 }
-                else if(linestr[j]==' ')
+                else if((j!=int(linestr.size()-1))&&((linestr[j]==' ')||(linestr[j]=='\t')||(linestr[j]=='\v')||(linestr[j]=='\f')||(linestr[j]=='\r')))
                 {
 
                 }
@@ -1085,21 +1305,26 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                         else
                             prevIfStat="";
                     }
+                    cout << count << "  " << forLoopHist.size() << " -1 forLoopHist.pop_back()" << endl;
                     forLoopHist.pop_back();
+                    statHasLBrac=true;
                     firstPass=false;
                 }
                 if(nextLine||(j>lastControlPos))
                 {
                     if(linestr[j]=='{')
                     {
+                        statHasLBrac=true;
                         depthArrayFlag.back()=true;
                         if(!forLoopHist.back())
                         {
                             depthNum++;
                             lpos=count;
+                            cout << count << "  " << lBracHis.size() << " +1" << endl;
                             lBracHis.push_back(lpos);
                         }
                         nextLine=false;
+                        lastControlPos=256;
                         if(!destStart)
                         {
                             depthNum--;
@@ -1109,6 +1334,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
                 }
             }
         }
+        stream.getline(line,256); count++;
     }
 
     //Add the delDegenNumList and the newDegenNumList to the checking algorithm, compare the two by checking
@@ -1216,7 +1442,7 @@ void CheckData(std::stringstream& stream, std::stringstream& output)
     }
 
     bool firstMatch, toggle;
-    int closestNew;
+    int closestNew=0;
 
     //makse sure that every new statement has a matching delete statement, and occur under the same circumstances (scope and if statements) and for the same amount of times
     for(int k=0; k<int(delNameList.size()); k++)
